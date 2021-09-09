@@ -19,6 +19,8 @@ from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import cross_val_predict
 from sklearn import metrics
 from sklearn.model_selection import RandomizedSearchCV
+import xgboost as xgb
+
 
 import shap
 import matplotlib.pyplot as plt
@@ -27,12 +29,16 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import plot_roc_curve
 import re
 
-def read_in_data():
+
+
+
+def read_in_data(cols_to_drop=[]):
     df = pd.read_csv('../data/JJ_JK_8_26_21_LC_MECFS.csv')
     prots = df['Protein']
     df = df.drop(['Protein'], axis=1)
     df = df.T
     df.columns = prots
+    df = df.drop(columns=cols_to_drop)
     return df
 
 def label_data(df):
@@ -135,6 +141,10 @@ def support_vm(X, y, cv):
     clf = svm.SVC(class_weight='balanced',probability=True)
     return clf
 
+def xg_boost(X, y, cv):
+    clf = xgb.XGBClassifier()
+    return clf
+
 def get_best_model(model, X, y, model_type='rf'):
     rf_params = {'class_weight':['balanced'], 'n_estimators':[5, 10, 25, 50, 100],
                  'min_impurity_decrease': [0, .1, .5], 'criterion': ['gini', 'entropy']}
@@ -143,9 +153,15 @@ def get_best_model(model, X, y, model_type='rf'):
                   'degree':[2, 3, 4], 'class_weight':['balanced'],
                   'probability':[1]}
 
+    xgb_params = {'n_estimators':[1, 2, 4, 8], 'booster':['gbtree', 'gblinear', 'dart'],
+                  'reg_alpha':[0.001, 0.01, 0.1, .5, 1], 'reg_lambda':[0.001, 0.01, 0.1, .5 ,1]
+    }
+
     model_case = {'rf': RandomizedSearchCV(model, param_distributions=rf_params, scoring='accuracy', cv=10,
                                             n_iter=10, refit=True, n_jobs=-1),
-                   'svm': RandomizedSearchCV(model, param_distributions=svm_params, scoring='accuracy', cv=10,
+                  'svm': RandomizedSearchCV(model, param_distributions=svm_params, scoring='accuracy', cv=10,
+                                            n_iter=10, refit=True, n_jobs=-1),
+                  'xgb': RandomizedSearchCV(model, param_distributions=xgb_params, scoring='accuracy', cv=10,
                                             n_iter=10, refit=True, n_jobs=-1)
                    }
 
@@ -155,7 +171,7 @@ def get_best_model(model, X, y, model_type='rf'):
     return(model)
 
 
-def shapley_analysis(X, model, model_type):
+def shapley_analysis(X, model, model_type, norm):
     if model_type == 'rf':
         explainer = shap.TreeExplainer(model, feature_names=X.columns.tolist())
     else:
@@ -168,19 +184,19 @@ def shapley_analysis(X, model, model_type):
     shap_df = pd.DataFrame(shap_values[1])
     shap_df.columns = X.columns
     shap_df.index = X.index
-    shap_df.to_csv("../results/shap_res_long_covid.csv")
+    shap_df.to_csv("../results/shap_res_long_covid_%s_normed.csv" % norm)
 
     mean_importance = np.absolute(shap_values[0]).mean(axis=0)
     mean_importance = np.absolute(mean_importance)
     feat_import = pd.DataFrame({'feature':X.columns, 'mean_importance':mean_importance}).sort_values('mean_importance', ascending=False)
-    feat_import.to_csv('../results/shap_feat_import_list.csv')
+    feat_import.to_csv('../results/shap_feat_import_list_%s_normed.csv' % norm)
 
-def eval_model(model, X, y, cv, model_type='rf'):
+def eval_model(model, X, y, cv, model_type='rf', norm=''):
     #print(y.sum())
     #print(len(y))
     y_pred = cross_val_predict(model, X, y, cv=cv)
     model = get_best_model(model, X, y, model_type)
-    shapley_analysis(X, model, model_type)
+
     #y_test = np.vectorize(factor_dict.get)(y)
     #y_pred = np.vectorize(factor_dict.get)(y_pred)
     
@@ -197,8 +213,9 @@ def eval_model(model, X, y, cv, model_type='rf'):
               mean(scores_spec), std(scores_spec)
           )
           )
+    #shapley_analysis(X, model, model_type, norm)
 
-def run_models(normed_dfs, labs, classes):
+def run_models(normed_dfs, labs, classes, model_type='rf'):
     cv = KFold(n_splits=10, random_state=43, shuffle=True)
 
     for norm in normed_dfs:
@@ -207,18 +224,27 @@ def run_models(normed_dfs, labs, classes):
         for clss in classes:
             rf = rand_for(X, labs[clss], cv)
             svm = support_vm(X, labs[clss], cv)
-            eval_model(svm, X, labs[clss], cv, model_type='svm')
+            eval_model(svm, X, labs[clss], cv, model_type='svm', norm=norm)
     
+
+def filter_classes(df, labels_onehot, classes_to_drop=[]):
+    for clss in classes_to_drop:
+        filt = labels_onehot[clss] != 1
+        df = df[filt]
+        labels_onehot = labels_onehot[filt]
+    return df, labels_onehot
+
 
 
 def main():
-    df = read_in_data()
-    labels, labels_onehot= label_data(df)
+    df = read_in_data(cols_to_drop=['COV2-RBD', 'SARS-RBD'])
+    labels, labels_onehot = label_data(df)
+    df, labels_onehot = filter_classes(df, labels_onehot, 'M')
     #normed_dfs = normalize_data(df, ['log_transform', 'zscore', 'lib_size_norm', 'lib_size_norm_log', 'sqrt', 'zscore_log'])
     #normed_dfs = normalize_data(df, ['log_transform', 'zscore', 'lib_size_norm', 'sqrt', 'raw'])
     # These normalization schemes work well for SVM models
-    normed_dfs = normalize_data(df, ['sqrt', 'raw'])
-    run_models(normed_dfs, labels_onehot, 'C')
+    normed_dfs = normalize_data(df, ['sqrt'])
+    run_models(normed_dfs, labels_onehot, 'C', model_type='xgb')
 
 
 
