@@ -1,0 +1,95 @@
+---
+title: "REAP_long_covid"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/jbishai/Projects/dijk-lab/ring/long_covid/scripts/")
+source('~/Projects/utility_scripts/utility_functions.R')
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r load data}
+feat_import <- read_csv('../results/shap_feat_import_list_sqrt.csv')
+shap_res <- read_csv('../results/shap_res_long_covid_sqrt.csv')
+raw_dat <- read_csv('../data/JJ_JK_8_26_21_LC_MECFS.csv')
+symptom_pred <- read_tsv('../results/symptom_model_results_obj.tsv')
+```
+
+```{r viz data}
+
+symptom_pred %>% mutate(acc_diff = mean_accuracy_10x_cv - naive_guessing_accuracy) %>% filter(acc_diff > .1) %>% ggplot(aes(x = meta_category, y = acc_diff)) + geom_col() + rotate_x_axis
+
+raw.m <- raw_dat %>%
+  melt(value.name = 'REAP_score', variable.name = 'sample')
+
+raw.m <- raw.m %>% mutate(sqrt_REAP_score = sqrt(REAP_score))
+  
+
+feat_import %>% head(n=25) %>% mutate(feature = factor(feature, levels=feature)) %>% ggplot(aes(x=feature, y=sqrt(mean_importance))) + geom_col() + rotate_x_axis + ggtitle('Feature Importances (t25) from Shapley Analysis (sqrt normed data)')
+
+
+
+
+shap <- shap_res %>% melt(variable.name = 'Feature', value.name = 'SHAP.value') 
+  
+
+t25 <- feat_import %>% head(n=25) %>% .$feature %>% rev
+  
+shap <- shap %>% group_by(Feature) %>% summarize(mean.shap =  mean(abs(SHAP.value))) %>% inner_join(shap)
+
+t25
+
+raw.m %>% head
+
+shap_raw_merge <- shap %>% filter(Feature %in% t25) %>% 
+  mutate(Feature = factor(Feature, levels=t25))
+    
+
+shap_raw_merge = left_join(shap_raw_merge, raw.m, by=c('Feature'='Protein','X1'='sample'))
+
+
+shap_raw_merge %>%
+  mutate(Feature = factor(Feature, levels=t25)) %>%
+  ggplot(aes(x = SHAP.value, y = Feature, color=sqrt_REAP_score)) + geom_jitter()
+
+
+ggsave('../figures/shap_results.pdf', width=10, height=12)
+
+shap <- shap %>% arrange(mean.shap) 
+feat_levels <- unique(as.character(shap$Feature))
+
+shap <- shap %>% rename(sample = X1)
+library(viridis)
+
+
+raw_REAP <- read.csv('../data/JJ_JK_8_26_21_LC_MECFS.csv')
+
+REAP.m <- raw_REAP %>% melt(variable.name = 'sample', value.name='REAP_score')
+
+head(shap)
+
+shap <- prots.m %>% inner_join(shap)
+
+shap %>% mutate(Feature = factor(Feature, levels=feat_levels)) %>% filter(mean.shap > 0) %>% ggplot(aes(x = SHAP.value, y = Feature, color = z.score.log.cyto)) + geom_jitter(shape=1 ) + scale_color_viridis(name = 'Z-scored \nLog(Sample-specific\n Cytokine Value)') + ggtitle('SHAPley Plot of Viral RF Model') + xlim(-.2, .1)  
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
