@@ -226,15 +226,16 @@ def shapley_analysis(X, model, model_type, norm, feat):
 
     # this should be 0 for Long Covid
     # should be 1 for non Long Covid
-    shap_df = pd.DataFrame(shap_values[1])
-    shap_df.columns = X.columns
-    shap_df.index = X.index
-    shap_df.to_csv("../results/shap_res_long_covid_%s_%s_normed.csv" % (feat, norm))
+    for index in range(len(shap_values)):
+        shap_df = pd.DataFrame(shap_values[index])
+        shap_df.columns = X.columns
+        shap_df.index = X.index
+        shap_df.to_csv("../results/shap_res_long_covid_%s_class_index_%s_%s_normed.csv" % (feat, index, norm))
 
-    mean_importance = np.absolute(shap_values[0]).mean(axis=0)
-    mean_importance = np.absolute(mean_importance)
-    feat_import = pd.DataFrame({'feature':X.columns, 'mean_importance':mean_importance}).sort_values('mean_importance', ascending=False)
-    feat_import.to_csv('../results/shap_feat_import_list_%s_%s_normed.csv' % (feat,norm))
+        mean_importance = np.absolute(shap_values[index]).mean(axis=0)
+        mean_importance = np.absolute(mean_importance)
+        feat_import = pd.DataFrame({'feature':X.columns, 'mean_importance':mean_importance}).sort_values('mean_importance', ascending=False)
+        feat_import.to_csv('../results/shap_feat_import_list_%s_clas_index_%s_%s_normed.csv' % (feat, index, norm))
 
 def datasplit(df, labels):
    return train_test_split(df, labels, test_size=0.20, random_state=42)
