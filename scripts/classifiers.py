@@ -412,7 +412,12 @@ def main():
     baseline_mod = ModelResult(out_fp)
 
     baseline_mod.write_header()
-    meta_cols = ["x0_LC_Symptom_dysaut_total"]
+    #meta_cols = ["x0_LC_Symptom_dysaut_total"]
+    meta_cols = []
+    with open ('../data/symptom_colss.txt', 'r') as cols_file:
+        meta_cols += cols_file.readline().split('\t')
+
+    
     all_models = []
     for cat in meta_cols:
         cat_mod = copy.deepcopy(baseline_mod)
