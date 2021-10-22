@@ -414,7 +414,7 @@ def main():
     baseline_mod.write_header()
     #meta_cols = ["x0_LC_Symptom_dysaut_total"]
     meta_cols = []
-    with open ('../data/symptom_colss.txt', 'r') as cols_file:
+    with open ('../data/symptom_cols.txt', 'r') as cols_file:
         meta_cols += cols_file.readline().split('\t')
 
     
